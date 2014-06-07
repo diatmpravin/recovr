@@ -8,6 +8,7 @@ import (
 	"net/url"
 	_ "github.com/go-sql-driver/mysql"
 	"database/sql"
+//	"strings"
 )
 
 const (
@@ -46,8 +47,31 @@ func setupDB() *sql.DB{
 }
 
 func (p Profile) Get(values url.Values) (int, interface {}) {
+	fmt.Printf("In Profile GET!")
 	data := map[string]string{"hello": "world"}
     return 200, data
+}
+
+func (p Profile) Post(values url.Values) (int, interface {}) {
+	fmt.Printf("In Profile POST!")
+	stmt, err := db.Prepare("INSERT profile SET name=?,phone=?,password=?")
+	PanicIf(err)
+
+	name :=  values["name"][0]
+	phone := values["phone"][0]
+	password := values["password"][0]
+
+	res, err := stmt.Exec(name, phone, password)
+	PanicIf(err)
+    fmt.Println("Response:", res)
+
+	data := map[string]string{"response": "true", "message": "Profile created successfully" }
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Something went woring" }
+	}
+
+	return 200, data
 }
 
 func Abort(w http.ResponseWriter, statusCode int) {
@@ -62,14 +86,15 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 	var code int
 	profile := Profile{}
 
+	r.ParseForm()
 	method := r.Method
 	values := r.Form
-	fmt.Println("Method: ", method)
-	fmt.Println("Values: ", values)
 
 	switch method {
 	case GET:
 		code, data = profile.Get(values)
+	case POST:
+		code, data = profile.Post(r.Form)
 	default:
 		Abort(w, 405)
 		return
