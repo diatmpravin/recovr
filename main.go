@@ -1,5 +1,6 @@
 package main
 
+// import required libraries
 import (
 	"net/http"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"database/sql"
 	"time"
 )
-
+// global constants
 const (
 	GET    = "GET"
 	POST   = "POST"
@@ -18,6 +19,7 @@ const (
 	DELETE = "DELETE"
 )
 
+// global variable
 var (
 	db *sql.DB
 	profileTable = `CREATE TABLE IF NOT EXISTS profile (
@@ -34,20 +36,17 @@ var (
     );`
 )
 
+type Date int64
+
 type Login struct {
 	Phone string
-	Password struct {
-	}
+	Password string
 }
 
 type Profile struct {
-	Name string
-	Phone string
-	Password struct {
-	}
+	Login    //anonymous field
+	Password string
 }
-
-type Date int64
 
 type Coordinate struct {
 	Phone string
@@ -56,16 +55,35 @@ type Coordinate struct {
 	CreateAt Date
 }
 
+// run before program execution
+func init() {
+	db = setupDB()
+
+	ptable, err := db.Query(profileTable)
+	PanicIf(err)
+	fmt.Println("Profile table created successfully:", ptable)
+	ctable, err := db.Query(coordinateTable)
+	PanicIf(err)
+	fmt.Println("Coordinate table created successfully:", ctable)
+}
+
+// setup db connection
+func setupDB() *sql.DB{
+	db, err := sql.Open("mysql", "root@/recovr?charset=utf8")
+	PanicIf(err)
+	return db
+}
+
+// global through ERROR
 func PanicIf(err error) {
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
 }
 
-func setupDB() *sql.DB{
-	db, err := sql.Open("mysql", "root@/recovr?charset=utf8")
-	PanicIf(err)
-	return db
+// Abort with ERROR code
+func Abort(w http.ResponseWriter, statusCode int) {
+	w.WriteHeader(statusCode)
 }
 
 func (p Profile) Get(values url.Values) (int, interface {}) {
@@ -96,10 +114,24 @@ func (p Profile) Post(values url.Values) (int, interface {}) {
 	return 200, data
 }
 
-func Abort(w http.ResponseWriter, statusCode int) {
-	w.WriteHeader(statusCode)
-}
+func (p Profile) Put(values url.Values) (int, interface {}) {
+	fmt.Printf("In Profile PUT!")
 
+	password := values["password"][0]
+
+	var s string
+	err := db.QueryRow("SELECT phone FROM profile WHERE password=?", password).Scan(&s)
+	PanicIf(err)
+	fmt.Println("S", s)
+
+	data := map[string]string{"response": "true", "message": "Logged in successfully" }
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Either your user or password is incorrect!" }
+	}
+
+	return 200, data
+}
 
 func profileHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Inside handler")
@@ -135,23 +167,35 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
-func (p Profile) Put(values url.Values) (int, interface {}) {
-	fmt.Printf("In Profile PUT!")
+func coordinateHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Inside coordinate Handler")
 
-	password := values["password"][0]
+	var data interface{}
+	var code int
+	coordinate := Coordinate{}
 
-	var s string
-	err := db.QueryRow("SELECT phone FROM profile WHERE password=?", password).Scan(&s)
-	PanicIf(err)
-	fmt.Println("S", s)
+	r.ParseForm()
+	method := r.Method
+	values := r.Form
 
-	data := map[string]string{"response": "true", "message": "Logged in successfully" }
-	fmt.Println("Data:", data)
-	if err != nil {
-		return 405, map[string]string{"response": "false", "message": "Either your user or password is incorrect!" }
+	switch method {
+	case GET:
+		code, data = coordinate.Get(values)
+	case POST:
+		code, data = coordinate.Post(values)
+	default:
+		Abort(w, 405)
+		return
 	}
 
-	return 200, data
+	content, err := json.Marshal(data)
+	if err != nil {
+		PanicIf(err)
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(code)
+	w.Write(content)
 }
 
 func (c Coordinate) Post(values url.Values) (int, interface {}) {
@@ -203,7 +247,6 @@ func (c Coordinate) Get(values url.Values) (int, interface {}) {
 
 	fmt.Println("Coordinates ", coordinates)
 
-//	data := map[string]string{"lat": lat, "lng": lng }
 	data := coordinates
 	fmt.Println("Data:", data)
 	if err != nil {
@@ -211,37 +254,6 @@ func (c Coordinate) Get(values url.Values) (int, interface {}) {
 	}
 
 	return 200, data
-}
-
-func coordinateHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Inside coordinate Handler")
-
-	var data interface{}
-	var code int
-	coordinate := Coordinate{}
-
-	r.ParseForm()
-	method := r.Method
-	values := r.Form
-
-	switch method {
-	case GET:
-		code, data = coordinate.Get(values)
-	case POST:
-		code, data = coordinate.Post(values)
-	default:
-		Abort(w, 405)
-		return
-	}
-
-	content, err := json.Marshal(data)
-	if err != nil {
-		PanicIf(err)
-	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(code)
-	w.Write(content)
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -296,15 +308,7 @@ func (p Login) Post(values url.Values) (int, interface {}) {
 }
 
 func main() {
-	db = setupDB()
 	defer db.Close()
-
-	ptable, err := db.Query(profileTable)
-	PanicIf(err)
-	fmt.Println("Profile table created successfully:", ptable)
-	ctable, err := db.Query(coordinateTable)
-	PanicIf(err)
-	fmt.Println("Coordinate table created successfully:", ctable)
 
 	http.HandleFunc("/profile", profileHandler)
 	http.HandleFunc("/login", loginHandler)
@@ -315,5 +319,3 @@ func main() {
 		log.Fatalf("Error to listen:", err)
 	}
 }
-
-
