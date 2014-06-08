@@ -34,6 +34,12 @@ var (
     );`
 )
 
+type Login struct {
+	Phone string
+	Password struct {
+	}
+}
+
 type Profile struct {
 	Name string
 	Phone string
@@ -66,25 +72,6 @@ func (p Profile) Get(values url.Values) (int, interface {}) {
 	fmt.Printf("In Profile GET!")
 	data := map[string]string{"hello": "world"}
     return 200, data
-}
-
-func (p Profile) Put(values url.Values) (int, interface {}) {
-	fmt.Printf("In Profile PUT!")
-
-	password := values["password"][0]
-
-	var s string
-	err := db.QueryRow("SELECT phone FROM profile WHERE password=?", password).Scan(&s)
-	PanicIf(err)
-    fmt.Println("S", s)
-
-	data := map[string]string{"response": "true", "message": "Logged in successfully" }
-	fmt.Println("Data:", data)
-	if err != nil {
-		return 405, map[string]string{"response": "false", "message": "Either your user or password is incorrect!" }
-	}
-
-	return 200, data
 }
 
 func (p Profile) Post(values url.Values) (int, interface {}) {
@@ -123,6 +110,7 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 
 	r.ParseForm()
 	method := r.Method
+	fmt.Println("Method:", method)
 	values := r.Form
 
 	switch method {
@@ -142,8 +130,28 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 		PanicIf(err)
 	}
 
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(code)
 	w.Write(content)
+}
+
+func (p Profile) Put(values url.Values) (int, interface {}) {
+	fmt.Printf("In Profile PUT!")
+
+	password := values["password"][0]
+
+	var s string
+	err := db.QueryRow("SELECT phone FROM profile WHERE password=?", password).Scan(&s)
+	PanicIf(err)
+	fmt.Println("S", s)
+
+	data := map[string]string{"response": "true", "message": "Logged in successfully" }
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Either your user or password is incorrect!" }
+	}
+
+	return 200, data
 }
 
 func (c Coordinate) Post(values url.Values) (int, interface {}) {
@@ -231,8 +239,60 @@ func coordinateHandler(w http.ResponseWriter, r *http.Request) {
 		PanicIf(err)
 	}
 
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(code)
 	w.Write(content)
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Inside coordinate Handler")
+
+	var data interface{}
+	var code int
+	login := Login{}
+
+	r.ParseForm()
+	method := r.Method
+	values := r.Form
+
+	switch method {
+	case POST:
+		code, data = login.Post(values)
+	default:
+		Abort(w, 405)
+		return
+	}
+
+	content, err := json.Marshal(data)
+	if err != nil {
+		PanicIf(err)
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(code)
+	w.Write(content)
+}
+
+func (p Login) Post(values url.Values) (int, interface {}) {
+	fmt.Printf("In Profile PUT!")
+
+	username := values["phone"][0]
+	password := values["password"][0]
+	fmt.Println("UserName: ", username)
+	fmt.Println("Password: ", password)
+
+	var name string
+	err := db.QueryRow("SELECT name FROM profile WHERE password=? and phone=?", password, username).Scan(&name)
+	PanicIf(err)
+	fmt.Println("Name", name)
+
+	data := map[string]string{"response": "true", "message": "Logged in successfully" }
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Either your user or password is incorrect!" }
+	}
+
+	return 200, data
 }
 
 func main() {
@@ -247,6 +307,7 @@ func main() {
 	fmt.Println("Coordinate table created successfully:", ctable)
 
 	http.HandleFunc("/profile", profileHandler)
+	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/coordinate", coordinateHandler)
 
 	fmt.Println("Listening on 3000....")
