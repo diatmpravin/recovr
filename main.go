@@ -29,8 +29,8 @@ var (
 	coordinateTable = `CREATE TABLE IF NOT EXISTS coordinate (
 		phone VARCHAR(64) NULL DEFAULT NULL,
 		lat VARCHAR(64) NULL DEFAULT NULL,
-		longt VARCHAR(64) NULL DEFAULT NULL,
-		date_time VARCHAR(64) NULL DEFAULT NULL
+		lng VARCHAR(64) NULL DEFAULT NULL,
+		createAt VARCHAR(64) NULL DEFAULT NULL
     );`
 )
 
@@ -45,9 +45,9 @@ type Date int64
 
 type Coordinate struct {
 	Phone string
-	lat string
-	longt string
-	date_time Date
+	Lat string
+	Lng string
+	CreateAt Date
 }
 
 func PanicIf(err error) {
@@ -146,6 +146,65 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
+func (c Coordinate) Post(values url.Values) (int, interface {}) {
+	fmt.Printf("In Coordinate POST!")
+	stmt, err := db.Prepare("INSERT coordinate SET phone=?,lat=?,lng=?,createAt=?")
+	PanicIf(err)
+
+	phone := values["phone"][0]
+	lat :=  values["lat"][0]
+	lng :=  values["long"][0]
+	createAt := time.Now().Local()
+
+	fmt.Println("Phone: ", phone)
+	fmt.Println("Lat: ", lat)
+	fmt.Println("lng: ", lng)
+	fmt.Println("createAt: ", createAt)
+
+	res, err := stmt.Exec(phone, lat, lng, createAt)
+	PanicIf(err)
+	fmt.Println("Response:", res)
+
+	data := map[string]string{"response": "true", "message": "Coordinate saved successfully" }
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Something went woring" }
+	}
+
+	return 200, data
+}
+
+func (c Coordinate) Get(values url.Values) (int, interface {}) {
+	fmt.Printf("In Coordinate GET!")
+
+	limit:=  values["range"][0]
+	phone := values["phone"][0]
+	fmt.Println("Range: ", limit)
+	fmt.Println("Phone: ", phone)
+
+	rows, err := db.Query(" select lat, lng from coordinate where phone=? order by createAt limit ?", phone, limit)
+	PanicIf(err)
+
+	coordinates := []Coordinate{}
+	for rows.Next() {
+		coordinate := Coordinate{}
+		err := rows.Scan(&coordinate.Lat, &coordinate.Lng)
+		PanicIf(err)
+		coordinates = append(coordinates, coordinate)
+	}
+
+	fmt.Println("Coordinates ", coordinates)
+
+//	data := map[string]string{"lat": lat, "lng": lng }
+	data := coordinates
+	fmt.Println("Data:", data)
+	if err != nil {
+		return 405, map[string]string{"response": "false", "message": "Something went woring" }
+	}
+
+	return 200, data
+}
+
 func coordinateHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Inside coordinate Handler")
 
@@ -158,12 +217,10 @@ func coordinateHandler(w http.ResponseWriter, r *http.Request) {
 	values := r.Form
 
 	switch method {
-//	case GET:
-//		code, data = coordinate.Get(values)
+	case GET:
+		code, data = coordinate.Get(values)
 	case POST:
 		code, data = coordinate.Post(values)
-//	case PUT:
-//		code, data = coordinate.Put(values)
 	default:
 		Abort(w, 405)
 		return
@@ -176,34 +233,6 @@ func coordinateHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(code)
 	w.Write(content)
-}
-
-func (c Coordinate) Post(values url.Values) (int, interface {}) {
-	fmt.Printf("In Coordinate POST!")
-	stmt, err := db.Prepare("INSERT coordinate SET phone=?,lat=?,longt=?,date_time=?")
-	PanicIf(err)
-
-	phone := values["phone"][0]
-	lat :=  values["lat"][0]
-	longt :=  values["long"][0]
-	date_time := time.Now().Local()
-
-	fmt.Println("Phone: ", phone)
-	fmt.Println("Lat: ", lat)
-	fmt.Println("Longt: ", longt)
-	fmt.Println("Date_time: ", date_time)
-
-	res, err := stmt.Exec(phone, lat, longt, date_time)
-	PanicIf(err)
-	fmt.Println("Response:", res)
-
-	data := map[string]string{"response": "true", "message": "Coordinate saved successfully" }
-	fmt.Println("Data:", data)
-	if err != nil {
-		return 405, map[string]string{"response": "false", "message": "Something went woring" }
-	}
-
-	return 200, data
 }
 
 func main() {
@@ -225,4 +254,5 @@ func main() {
 		log.Fatalf("Error to listen:", err)
 	}
 }
+
 
